@@ -108,7 +108,9 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
         }
       };
 
-      mediaRecorder.start();
+      // Pass timeslice (1000ms) to request data in chunks. 
+      // This sometimes helps browsers write headers incrementally or behave better.
+      mediaRecorder.start(1000);
       
       timerRef.current = window.setInterval(() => {
         setDuration(prev => prev + 1);

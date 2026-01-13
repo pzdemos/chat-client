@@ -41,35 +41,39 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
     };
   }, [showMenu]);
 
-  // Audio Source
-  const audioSrc = message.blobUrl || (message.voiceUrl ? normalizeImageUrl(message.voiceUrl) : '');
+  // Audio Source - Add timestamp to prevent aggressive caching of partial files
+  const rawAudioSrc = message.blobUrl || (message.voiceUrl ? normalizeImageUrl(message.voiceUrl) : '');
+  const audioSrc = rawAudioSrc && !message.blobUrl ? `${rawAudioSrc}?t=${new Date(message.timestamp).getTime()}` : rawAudioSrc;
 
-  // Force reload audio when source changes
-  useEffect(() => {
-      if (audioRef.current && audioSrc) {
-          audioRef.current.load();
-      }
-  }, [audioSrc]);
-
-  const toggleAudio = (e: React.MouseEvent) => {
+  const toggleAudio = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const audio = audioRef.current;
     if (!audio || !audioSrc) return;
     
-    if (isPlaying) {
-        audio.pause();
-    } else {
-        // Reset if ended
-        if (audio.ended) {
-            audio.currentTime = 0;
+    try {
+        if (isPlaying) {
+            audio.pause();
+        } else {
+            // Android often needs a "nudge" if the metadata is at the end of the file
+            if (audio.readyState === 0 || audio.error) {
+                setIsAudioLoading(true);
+                audio.load();
+            }
+            
+            // Reset if ended
+            if (audio.ended) {
+                audio.currentTime = 0;
+            }
+            
+            await audio.play();
         }
-        
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                console.error("Playback failed:", error);
-                setIsPlaying(false);
-            });
+    } catch (error) {
+        console.error("Playback failed:", error);
+        setIsPlaying(false);
+        setIsAudioLoading(false);
+        // Retry logic: if play fails, force reload and try once more
+        if (audio.readyState === 0) {
+            audio.load(); 
         }
     }
   };
@@ -240,11 +244,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
                     </span>
                  </div>
                  
-                 {/* Declarative Audio Element - Using standard tag for best mobile compatibility */}
+                 {/* Declarative Audio Element */}
+                 {/* Key ensures React recreates the element if src changes, fixing stale state */}
                  <audio 
+                    key={audioSrc}
                     ref={audioRef} 
                     src={audioSrc}
-                    preload="auto"
+                    preload="metadata" 
                     playsInline
                     className="hidden"
                     onPlay={() => {
@@ -258,7 +264,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
                     }}
                     onWaiting={() => setIsAudioLoading(true)}
                     onPlaying={() => setIsAudioLoading(false)}
-                    onError={() => {
+                    onError={(e) => {
+                        console.error("Audio error event:", e);
                         setIsPlaying(false);
                         setIsAudioLoading(false);
                     }}
