@@ -170,6 +170,22 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
     };
   }, [user.userId, activeChat]); 
 
+  // --- Restore Chat from URL ---
+  useEffect(() => {
+    if (friends.length > 0 && !activeChat) {
+        const params = new URLSearchParams(window.location.search);
+        const chatId = params.get('chatId');
+        
+        if (chatId) {
+            const friend = friends.find(f => f.userId === chatId);
+            if (friend) {
+                // Determine if we should replace URL or push (on first load usually replace is cleaner, but push is fine)
+                selectChat(friend, false); 
+            }
+        }
+    }
+  }, [friends]); // Only run when friends list loads
+
   const scrollToBottom = (instant = false) => {
       setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ 
@@ -213,7 +229,20 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
     } catch (error) { console.error(error); }
   };
 
-  const selectChat = async (friend: Friend) => {
+  const selectChat = async (friend: Friend, updateUrl = true) => {
+      // Update URL logic with Safe Handling
+      if (updateUrl) {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('chatId', friend.userId);
+            // Use query string only to avoid origin issues in restricted environments (blob/iframe)
+            window.history.pushState({}, '', '?' + url.searchParams.toString());
+        } catch (e) {
+            // Silently fail if history API is restricted (e.g. preview env)
+            console.warn('URL update restricted in this environment');
+        }
+      }
+
       setActiveChat(friend);
       setMessages([]);
       setIsLoading(true);
@@ -229,6 +258,18 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
           showToast('Failed to load messages', 'error');
       } finally {
           setIsLoading(false);
+      }
+  };
+
+  const handleBackToFriends = () => {
+      setActiveChat(null);
+      // Clear URL parameter safely
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('chatId');
+        window.history.pushState({}, '', '?' + url.searchParams.toString());
+      } catch (e) {
+        console.warn('URL update restricted in this environment');
       }
   };
 
@@ -591,7 +632,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                     {/* Header */}
                     <div className="h-16 px-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 flex-shrink-0 z-10">
                         <div className="flex items-center">
-                            <button onClick={() => setActiveChat(null)} className="md:hidden mr-3 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
+                            <button onClick={handleBackToFriends} className="md:hidden mr-3 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
                                 <i className="fas fa-arrow-left"></i>
                             </button>
                             <Avatar name={activeChat.username} src={normalizeImageUrl(activeChat.avatar)} size="sm" />
