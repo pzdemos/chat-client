@@ -44,9 +44,9 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
 
   const getSupportedMimeType = () => {
     const types = [
+      'audio/mp4',              // Prioritize MP4 for iOS/Safari (AAC) - Best for cross-platform
       'audio/webm;codecs=opus', // Preferred for Android & Chrome
-      'audio/webm',             // Generic WebM (supported by modern iOS 14.8+)
-      'audio/mp4',              // iOS Safari Fallback
+      'audio/webm',             // Generic WebM
       'audio/ogg'
     ];
     for (const type of types) {

@@ -16,7 +16,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
   const { t } = useLanguage();
   const [isImageLoading, setIsImageLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false); // Default to false to show play button immediately
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   
@@ -46,56 +46,50 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
   
   useEffect(() => {
     if (message.messageType === 'voice' && audioSrc && !message.isRecalled) {
-        const isBlob = message.blobUrl ? true : false;
-        // If it's a blob (local recording), it's ready instantly. If remote, show loading.
-        if (!isBlob) setIsAudioLoading(true);
-
         const audio = new Audio(audioSrc);
         // Important: Enable playsinline for iOS
         audio.setAttribute('playsinline', 'true');
         audio.setAttribute('webkit-playsinline', 'true');
         audioRef.current = audio;
-        
-        // Safety timeout: stop loading spinner after 3s even if network is slow/fails
-        // This allows the user to try clicking play manually
-        const safetyTimeout = setTimeout(() => {
-            setIsAudioLoading(false);
-        }, 3000);
 
-        // 'loadedmetadata' is safer than 'canplaythrough' for cross-platform mobile audio
-        // It fires as soon as we know the duration, which is enough to show the UI
-        const handleReady = () => {
+        // Event handlers
+        const handleEnded = () => {
+            setIsPlaying(false);
             setIsAudioLoading(false);
-            clearTimeout(safetyTimeout);
         };
-
-        const handleEnded = () => setIsPlaying(false);
-        const handlePause = () => setIsPlaying(false);
-        const handlePlay = () => setIsPlaying(true);
+        const handlePause = () => {
+            setIsPlaying(false);
+            setIsAudioLoading(false);
+        };
+        const handlePlay = () => {
+            setIsPlaying(true);
+            setIsAudioLoading(false);
+        };
+        const handleWaiting = () => setIsAudioLoading(true);
+        const handlePlaying = () => setIsAudioLoading(false);
         const handleError = () => {
             setIsAudioLoading(false);
-            clearTimeout(safetyTimeout);
-            console.error("Audio load error", audioSrc);
+            setIsPlaying(false);
+            console.error("Audio playback error", audioSrc);
         };
 
-        audio.addEventListener('loadedmetadata', handleReady);
-        // Fallback: sometimes loadedmetadata doesn't fire but canplay does
-        audio.addEventListener('canplay', handleReady);
-        audio.addEventListener('error', handleError);
         audio.addEventListener('ended', handleEnded);
         audio.addEventListener('pause', handlePause);
         audio.addEventListener('play', handlePlay);
+        audio.addEventListener('waiting', handleWaiting);
+        audio.addEventListener('playing', handlePlaying);
+        audio.addEventListener('error', handleError);
         
+        // Preload metadata if possible, but don't block UI
         audio.load();
 
         return () => {
-            clearTimeout(safetyTimeout);
-            audio.removeEventListener('loadedmetadata', handleReady);
-            audio.removeEventListener('canplay', handleReady);
-            audio.removeEventListener('error', handleError);
             audio.removeEventListener('ended', handleEnded);
             audio.removeEventListener('pause', handlePause);
             audio.removeEventListener('play', handlePlay);
+            audio.removeEventListener('waiting', handleWaiting);
+            audio.removeEventListener('playing', handlePlaying);
+            audio.removeEventListener('error', handleError);
             audio.pause();
             audioRef.current = null;
         };
@@ -113,10 +107,15 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
         if (audioRef.current.ended) {
             audioRef.current.currentTime = 0;
         }
-        audioRef.current.play().catch(e => {
-            console.error("Playback failed:", e);
-            setIsPlaying(false);
-        });
+        
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(e => {
+                console.error("Playback failed:", e);
+                setIsPlaying(false);
+                setIsAudioLoading(false);
+            });
+        }
     }
   };
 
@@ -253,7 +252,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
           {isVoice && (
             <div className="flex items-center space-x-3 pr-1 min-w-[100px]" onClick={toggleAudio}>
               <button 
-                disabled={isAudioLoading}
                 className={`
                   w-8 h-8 rounded-full flex items-center justify-center transition-transform active:scale-95 focus:outline-none flex-shrink-0
                   ${isMe ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-slate-100 dark:bg-slate-700 text-primary-600 dark:text-primary-400 hover:bg-slate-200 dark:hover:bg-slate-600'}

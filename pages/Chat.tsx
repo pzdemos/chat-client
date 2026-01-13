@@ -358,10 +358,17 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
 
       const formData = new FormData();
       
-      // Determine extension based on blob type (mp4 for iOS Safari, webm for others)
-      const extension = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
-      const fileName = `voice.${extension}`;
-      formData.append('voice', new File([audioBlob], fileName, { type: audioBlob.type }));
+      // Smart extension handling based on mimeType
+      const mimeType = audioBlob.type || 'audio/webm';
+      let extension = '.webm';
+      if (mimeType.includes('ogg')) {
+          extension = '.ogg';
+      } else if (mimeType.includes('mp4') || mimeType.includes('mpeg')) {
+          extension = '.m4a';
+      }
+
+      const fileName = `voice-${Date.now()}${extension}`;
+      formData.append('voice', new File([audioBlob], fileName, { type: mimeType }));
 
       try {
         const { data } = await apiClient.post('upload/voice', formData, {
