@@ -1,0 +1,8 @@
+{
+  "name": "Chat Connect",
+  "description": "A modern, real-time messaging application with voice, image, and text support.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
