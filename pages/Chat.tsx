@@ -359,13 +359,19 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       const formData = new FormData();
       
       // Smart extension handling based on mimeType
-      const mimeType = audioBlob.type || 'audio/webm';
-      let extension = '.webm';
-      if (mimeType.includes('ogg')) {
-          extension = '.ogg';
-      } else if (mimeType.includes('mp4') || mimeType.includes('mpeg')) {
+      const mimeType = audioBlob.type; // Trust the blob type
+      let extension = '.webm'; // Default fallback
+      
+      // Strict checking
+      if (mimeType.includes('mp4') || mimeType.includes('aac')) {
           extension = '.m4a';
+      } else if (mimeType.includes('ogg')) {
+          extension = '.ogg';
+      } else if (mimeType.includes('wav')) {
+          extension = '.wav';
       }
+      
+      console.log(`Uploading voice: ${mimeType} -> ${extension}`);
 
       const fileName = `voice-${Date.now()}${extension}`;
       formData.append('voice', new File([audioBlob], fileName, { type: mimeType }));

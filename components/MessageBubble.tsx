@@ -44,26 +44,33 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
   // Audio Source
   const audioSrc = message.blobUrl || (message.voiceUrl ? normalizeImageUrl(message.voiceUrl) : '');
 
-  const toggleAudio = async (e: React.MouseEvent) => {
+  // Force reload audio when source changes
+  useEffect(() => {
+      if (audioRef.current && audioSrc) {
+          audioRef.current.load();
+      }
+  }, [audioSrc]);
+
+  const toggleAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
     const audio = audioRef.current;
     if (!audio || !audioSrc) return;
     
-    try {
-        if (isPlaying) {
-            audio.pause();
-        } else {
-            // Logic from reference HTML: ensure audio is ready
-            if (audio.readyState < 2) { // HAVE_CURRENT_DATA
-                setIsAudioLoading(true);
-                audio.load();
-            }
-            await audio.play();
+    if (isPlaying) {
+        audio.pause();
+    } else {
+        // Reset if ended
+        if (audio.ended) {
+            audio.currentTime = 0;
         }
-    } catch (error) {
-        console.error("Playback failed:", error);
-        setIsPlaying(false);
-        setIsAudioLoading(false);
+        
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                console.error("Playback failed:", error);
+                setIsPlaying(false);
+            });
+        }
     }
   };
 
@@ -233,18 +240,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isMe, onI
                     </span>
                  </div>
                  
-                 {/* Declarative Audio Element for better compatibility */}
+                 {/* Declarative Audio Element - Using standard tag for best mobile compatibility */}
                  <audio 
                     ref={audioRef} 
                     src={audioSrc}
+                    preload="auto"
+                    playsInline
                     className="hidden"
-                    preload="metadata"
                     onPlay={() => {
                         setIsPlaying(true);
                         setIsAudioLoading(false);
                     }}
                     onPause={() => setIsPlaying(false)}
-                    onEnded={() => setIsPlaying(false)}
+                    onEnded={() => {
+                        setIsPlaying(false);
+                        setIsAudioLoading(false);
+                    }}
                     onWaiting={() => setIsAudioLoading(true)}
                     onPlaying={() => setIsAudioLoading(false)}
                     onError={() => {

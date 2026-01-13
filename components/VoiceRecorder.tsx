@@ -19,7 +19,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
   const animationFrameRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const mimeTypeRef = useRef<string>('');
 
   useEffect(() => {
@@ -43,48 +42,60 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
   };
 
   const getSupportedMimeType = () => {
+    // CRITICAL: Order matters. 
+    // We MUST prioritize MP4/AAC because iOS cannot play WebM.
+    // Modern Android Chrome supports 'audio/mp4;codecs=aac'.
     const types = [
-      'audio/webm;codecs=opus', // Preferred for Android & Chrome (Efficient & Supported)
-      'audio/webm',             // Generic WebM
-      'audio/mp4',              // Fallback for iOS/Safari (AAC)
-      'audio/ogg'
+      'audio/mp4',               // iOS default, optimal for cross-platform
+      'audio/mp4;codecs=aac',    // Android Chrome explicit AAC support
+      'audio/mp4;codecs=m4a',    // Variant
+      'audio/webm;codecs=opus',  // Android fallback (If MP4 fails, iOS won't play this, but better than crashing)
+      'audio/webm',              // Generic fallback
+      'audio/ogg'                // Legacy
     ];
+
     for (const type of types) {
       if (MediaRecorder.isTypeSupported(type)) {
+        console.log(`Using MIME type: ${type}`);
         return type;
       }
     }
-    return ''; // Browser default
+    return ''; // Let browser choose default
   };
 
   const startRecording = async () => {
     try {
+      // Constraints: Disable echo cancellation for better music/voice quality if needed, 
+      // but usually defaults are fine for speech.
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
       // Audio Analysis for Visuals
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioContext();
-      audioContextRef.current = audioCtx;
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      analyserRef.current = analyser;
-      const source = audioCtx.createMediaStreamSource(stream);
-      sourceRef.current = source;
-      source.connect(analyser);
+      try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioContext();
+        audioContextRef.current = audioCtx;
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyserRef.current = analyser;
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
 
-      const updateLevel = () => {
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        setAudioLevel(avg);
-        animationFrameRef.current = requestAnimationFrame(updateLevel);
-      };
-      updateLevel();
+        const updateLevel = () => {
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+            const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+            setAudioLevel(avg);
+            animationFrameRef.current = requestAnimationFrame(updateLevel);
+        };
+        updateLevel();
+      } catch (e) {
+          console.warn("Audio Context failed (visuals disabled):", e);
+      }
 
       // Recorder Setup
       const mimeType = getSupportedMimeType();
-      mimeTypeRef.current = mimeType; // Store for stop handling
+      mimeTypeRef.current = mimeType;
       
       const options = mimeType ? { mimeType } : undefined;
       const mediaRecorder = new MediaRecorder(stream, options);
@@ -114,8 +125,8 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
 
     mediaRecorderRef.current.onstop = () => {
         if (shouldSend) {
-            // Use the actual detected mime type, fallback to webm if empty (though browser default usually has a type)
-            const type = mimeTypeRef.current || 'audio/webm';
+            // Use the actual MIME type used by the recorder, or fallback
+            const type = mediaRecorderRef.current?.mimeType || mimeTypeRef.current || 'audio/webm';
             const audioBlob = new Blob(audioChunksRef.current, { type });
             
             if (audioBlob.size > 0) {
