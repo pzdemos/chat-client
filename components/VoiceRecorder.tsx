@@ -6,20 +6,84 @@ interface VoiceRecorderProps {
   onClose: () => void;
 }
 
+// --- WAV Encoding Utilities ---
+const writeString = (view: DataView, offset: number, string: string) => {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+};
+
+const floatTo16BitPCM = (output: DataView, offset: number, input: Float32Array) => {
+  for (let i = 0; i < input.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+};
+
+const encodeWAV = (samples: Float32Array, sampleRate: number) => {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  /* RIFF identifier */
+  writeString(view, 0, 'RIFF');
+  /* RIFF chunk length */
+  view.setUint32(4, 36 + samples.length * 2, true);
+  /* RIFF type */
+  writeString(view, 8, 'WAVE');
+  /* format chunk identifier */
+  writeString(view, 12, 'fmt ');
+  /* format chunk length */
+  view.setUint32(16, 16, true);
+  /* sample format (raw) */
+  view.setUint16(20, 1, true);
+  /* channel count (Mono) */
+  view.setUint16(22, 1, true);
+  /* sample rate */
+  view.setUint32(24, sampleRate, true);
+  /* byte rate (sample rate * block align) */
+  view.setUint32(28, sampleRate * 2, true);
+  /* block align (channel count * bytes per sample) */
+  view.setUint16(32, 2, true);
+  /* bits per sample */
+  view.setUint16(34, 16, true);
+  /* data chunk identifier */
+  writeString(view, 36, 'data');
+  /* data chunk length */
+  view.setUint32(40, samples.length * 2, true);
+
+  floatTo16BitPCM(view, 44, samples);
+
+  return view;
+};
+
+const flattenArray = (channelBuffer: Float32Array[], recordingLength: number) => {
+  const result = new Float32Array(recordingLength);
+  let offset = 0;
+  for (let i = 0; i < channelBuffer.length; i++) {
+    const buffer = channelBuffer[i];
+    result.set(buffer, offset);
+    offset += buffer.length;
+  }
+  return result;
+};
+
 export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose }) => {
   const { t } = useLanguage();
   const [duration, setDuration] = useState(0);
   const [audioLevel, setAudioLevel] = useState(0);
   const [isClosing, setIsClosing] = useState(false);
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<number | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  // Custom Recorder State
   const audioContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioInputRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const audioDataRef = useRef<Float32Array[]>([]);
+  const recordingLengthRef = useRef<number>(0);
+  
+  const timerRef = useRef<number | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const mimeTypeRef = useRef<string>('');
 
   useEffect(() => {
     startRecording();
@@ -32,114 +96,98 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
     if (timerRef.current) clearInterval(timerRef.current);
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     
+    // Stop Tracks
     if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
     }
     
+    // Disconnect Nodes
+    if (processorRef.current) {
+        processorRef.current.disconnect();
+    }
+    if (audioInputRef.current) {
+        audioInputRef.current.disconnect();
+    }
+    
+    // Close Context
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
     }
   };
 
-  const getSupportedMimeType = () => {
-    // CRITICAL: Order matters. 
-    // We MUST prioritize MP4/AAC because iOS cannot play WebM.
-    // Modern Android Chrome supports 'audio/mp4;codecs=aac'.
-    const types = [
-      'audio/mp4',               // iOS default, optimal for cross-platform
-      'audio/mp4;codecs=aac',    // Android Chrome explicit AAC support
-      'audio/mp4;codecs=m4a',    // Variant
-      'audio/webm;codecs=opus',  // Android fallback (If MP4 fails, iOS won't play this, but better than crashing)
-      'audio/webm',              // Generic fallback
-      'audio/ogg'                // Legacy
-    ];
-
-    for (const type of types) {
-      if (MediaRecorder.isTypeSupported(type)) {
-        console.log(`Using MIME type: ${type}`);
-        return type;
-      }
-    }
-    return ''; // Let browser choose default
-  };
-
   const startRecording = async () => {
     try {
-      // Constraints: Disable echo cancellation for better music/voice quality if needed, 
-      // but usually defaults are fine for speech.
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // Audio Analysis for Visuals
-      try {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        const audioCtx = new AudioContext();
-        audioContextRef.current = audioCtx;
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyserRef.current = analyser;
-        const source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyser);
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioContext();
+      audioContextRef.current = audioCtx;
 
-        const updateLevel = () => {
-            const dataArray = new Uint8Array(analyser.frequencyBinCount);
-            analyser.getByteFrequencyData(dataArray);
-            const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-            setAudioLevel(avg);
-            animationFrameRef.current = requestAnimationFrame(updateLevel);
-        };
-        updateLevel();
-      } catch (e) {
-          console.warn("Audio Context failed (visuals disabled):", e);
-      }
-
-      // Recorder Setup
-      const mimeType = getSupportedMimeType();
-      mimeTypeRef.current = mimeType;
+      // 1. Setup Analyser for Visuals
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyserRef.current = analyser;
       
-      const options = mimeType ? { mimeType } : undefined;
-      const mediaRecorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      const source = audioCtx.createMediaStreamSource(stream);
+      audioInputRef.current = source;
+      source.connect(analyser);
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+      const updateLevel = () => {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+          const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          setAudioLevel(avg);
+          animationFrameRef.current = requestAnimationFrame(updateLevel);
+      };
+      updateLevel();
+
+      // 2. Setup Recorder (ScriptProcessor)
+      // bufferSize 4096 gives a good balance between latency and performance
+      const bufferSize = 4096; 
+      const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+      processorRef.current = processor;
+      
+      audioDataRef.current = [];
+      recordingLengthRef.current = 0;
+
+      processor.onaudioprocess = (e) => {
+          const inputData = e.inputBuffer.getChannelData(0);
+          // Clone data because inputBuffer is reused
+          const bufferCopy = new Float32Array(inputData);
+          audioDataRef.current.push(bufferCopy);
+          recordingLengthRef.current += bufferCopy.length;
       };
 
-      // Pass timeslice (1000ms) to request data in chunks. 
-      // This sometimes helps browsers write headers incrementally or behave better.
-      mediaRecorder.start(1000);
-      
+      // Connect source -> processor -> destination (needed for process to run)
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+
+      // 3. Start Timer
       timerRef.current = window.setInterval(() => {
         setDuration(prev => prev + 1);
       }, 1000);
 
     } catch (err) {
-      console.error("Microphone access denied:", err);
+      console.error("Microphone access denied or error:", err);
       onClose();
     }
   };
 
   const handleStop = (shouldSend: boolean) => {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') return;
-
-    mediaRecorderRef.current.onstop = () => {
-        if (shouldSend) {
-            // Use the actual MIME type used by the recorder, or fallback
-            const type = mediaRecorderRef.current?.mimeType || mimeTypeRef.current || 'audio/webm';
-            const audioBlob = new Blob(audioChunksRef.current, { type });
-            
-            if (audioBlob.size > 0) {
-                onSend(audioBlob, duration || 1);
-            }
+    if (shouldSend && audioContextRef.current) {
+        const sampleRate = audioContextRef.current.sampleRate;
+        const recordedBuffer = flattenArray(audioDataRef.current, recordingLengthRef.current);
+        const wavView = encodeWAV(recordedBuffer, sampleRate);
+        const audioBlob = new Blob([wavView], { type: 'audio/wav' });
+        
+        if (audioBlob.size > 0) {
+            onSend(audioBlob, duration || 1);
         }
-        setIsClosing(true);
-        setTimeout(onClose, 300); // Allow exit animation
-    };
-
-    mediaRecorderRef.current.stop();
+    }
+    
+    setIsClosing(true);
+    setTimeout(onClose, 300);
   };
 
   // Calculate scale based on audio level for animation
@@ -173,7 +221,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
         {/* Visualizer / Main Icon */}
         <div className="relative z-10 mb-20">
             <div className="relative w-32 h-32 flex items-center justify-center">
-                {/* Ripple Rings */}
                 {[1, 2, 3].map(i => (
                     <div 
                         key={i}
@@ -186,7 +233,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
                     ></div>
                 ))}
                 
-                {/* Central Mic */}
                 <div className="w-24 h-24 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center shadow-lg shadow-primary-500/50 z-20">
                     <i className="fas fa-microphone text-4xl text-white"></i>
                 </div>
@@ -195,7 +241,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
 
         {/* Controls */}
         <div className="absolute bottom-12 left-0 right-0 px-12 flex justify-between items-center max-w-md mx-auto w-full z-20">
-            {/* Cancel Button */}
             <button 
                 onClick={() => handleStop(false)}
                 className="group flex flex-col items-center justify-center space-y-2 text-slate-400 hover:text-red-500 transition-colors"
@@ -206,7 +251,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
                 <span className="text-xs font-medium">{t('action.cancel')}</span>
             </button>
 
-            {/* Send Button */}
             <button 
                 onClick={() => handleStop(true)}
                 className="group flex flex-col items-center justify-center space-y-2 text-slate-400 hover:text-green-500 transition-colors"
