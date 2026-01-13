@@ -67,6 +67,31 @@ const flattenArray = (channelBuffer: Float32Array[], recordingLength: number) =>
   return result;
 };
 
+// Downsample buffer to target rate (e.g. 16kHz) to reduce file size
+const downsampleBuffer = (buffer: Float32Array, inputRate: number, outputRate: number) => {
+    if (outputRate >= inputRate) return buffer;
+    
+    const sampleRateRatio = inputRate / outputRate;
+    const newLength = Math.round(buffer.length / sampleRateRatio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    
+    while (offsetResult < newLength) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+        // Use simple averaging to prevent aliasing
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
+        }
+        result[offsetResult] = count > 0 ? accum / count : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+};
+
 export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose }) => {
   const { t } = useLanguage();
   const [duration, setDuration] = useState(0);
@@ -176,9 +201,17 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
 
   const handleStop = (shouldSend: boolean) => {
     if (shouldSend && audioContextRef.current) {
-        const sampleRate = audioContextRef.current.sampleRate;
+        const inputSampleRate = audioContextRef.current.sampleRate;
+        const targetSampleRate = 16000; // Downsample to 16kHz (Voice Quality, 3x smaller file)
+
+        // Flatten the recorded buffers
         const recordedBuffer = flattenArray(audioDataRef.current, recordingLengthRef.current);
-        const wavView = encodeWAV(recordedBuffer, sampleRate);
+        
+        // Downsample
+        const downsampledBuffer = downsampleBuffer(recordedBuffer, inputSampleRate, targetSampleRate);
+        
+        // Encode to WAV
+        const wavView = encodeWAV(downsampledBuffer, targetSampleRate);
         const audioBlob = new Blob([wavView], { type: 'audio/wav' });
         
         if (audioBlob.size > 0) {
