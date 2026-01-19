@@ -459,7 +459,8 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
   const searchUsers = async () => {
     if (!searchQuery.trim()) return;
     try {
-        const { data } = await apiClient.get<User[]>(`users/search?username=${encodeURIComponent(searchQuery)}`);
+        // Updated API call to match backend path parameter requirement
+        const { data } = await apiClient.get<User[]>(`users/search/${encodeURIComponent(searchQuery)}`);
         setSearchResults(data.filter(u => u.userId !== user.userId));
     } catch (error) {
         setSearchResults([]);
@@ -498,7 +499,8 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
   // --- Render ---
 
   return (
-    <div className="fixed inset-0 flex bg-white dark:bg-slate-900 overflow-hidden font-sans">
+    // Changed: Use h-[100dvh] instead of fixed inset-0 to support mobile keyboards correctly
+    <div className="h-[100dvh] w-full flex bg-white dark:bg-slate-900 overflow-hidden font-sans relative">
         
         {/* LEFT SIDEBAR */}
         <div className={`
@@ -629,8 +631,8 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                 </div>
             ) : (
                 <>
-                    {/* Header */}
-                    <div className="h-16 px-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 flex-shrink-0 z-10">
+                    {/* Header: Use flex-none to ensure it doesn't shrink, add z-index to stay above scrollable content */}
+                    <div className="flex-none h-16 px-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 z-50 shadow-sm relative">
                         <div className="flex items-center">
                             <button onClick={handleBackToFriends} className="md:hidden mr-3 p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
                                 <i className="fas fa-arrow-left"></i>
@@ -644,8 +646,8 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                         <div className="w-8"></div>
                     </div>
 
-                    {/* Messages */}
-                    <div className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-950/50 scroll-smooth">
+                    {/* Messages: flex-1 ensures it takes remaining height. overflow-y-auto handles scrolling internally */}
+                    <div className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-950/50 scroll-smooth overscroll-contain">
                         {messages
                             .filter(msg => !msg.deletedBy?.some(d => d.userId === user.userId))
                             .map((msg, idx) => {
@@ -665,8 +667,8 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Input Area */}
-                    <div className="p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex-shrink-0 pb-safe z-20">
+                    {/* Input Area: flex-none ensures it stays at bottom, pb-safe handles iPhone Home bar */}
+                    <div className="flex-none p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 z-40 pb-safe">
                         <div className="flex items-end space-x-2 max-w-4xl mx-auto">
                              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                              
