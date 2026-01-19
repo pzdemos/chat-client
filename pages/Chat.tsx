@@ -485,7 +485,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
 
   const respondToRequest = async (requestId: string, status: 'accept' | 'reject') => {
     try {
-        await apiClient.post('friends/respond', { requestId, status });
+        await apiClient.post('friends/respond', { requestId, action: status });
         if (status === 'accept') {
             showToast(t('action.accepted'), 'success');
         }
