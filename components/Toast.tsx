@@ -6,6 +6,7 @@ interface Toast {
     id: string;
     message: string;
     type: ToastType;
+    isExiting?: boolean;
 }
 
 interface ToastContextType {
@@ -25,18 +26,24 @@ export const useToast = () => {
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [toasts, setToasts] = useState<Toast[]>([]);
 
+    const removeToast = useCallback((id: string) => {
+        // Trigger exit animation first
+        setToasts(prev => prev.map(t => t.id === id ? { ...t, isExiting: true } : t));
+        
+        // Remove from DOM after animation completes
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 250); // Matches the toast-out animation duration
+    }, []);
+
     const showToast = useCallback((message: string, type: ToastType = 'info') => {
         const id = Math.random().toString(36).substr(2, 9);
         setToasts(prev => [...prev, { id, message, type }]);
 
         setTimeout(() => {
-            setToasts(prev => prev.filter(t => t.id !== id));
+            removeToast(id);
         }, 3000);
-    }, []);
-
-    const removeToast = (id: string) => {
-        setToasts(prev => prev.filter(t => t.id !== id));
-    };
+    }, [removeToast]);
 
     const getIconColor = (type: ToastType) => {
         switch (type) {
@@ -57,21 +64,30 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return (
         <ToastContext.Provider value={{ showToast }}>
             {children}
-            <div className="fixed top-4 right-4 z-[100] flex flex-col space-y-3 pointer-events-none">
+            {/* Top Center Container */}
+            <div className="fixed top-4 left-1/2 z-[100] flex flex-col items-center space-y-3 pointer-events-none -translate-x-1/2 w-full px-4 sm:top-8">
                 {toasts.map(toast => (
                     <div
                         key={toast.id}
                         className={`
-                            pointer-events-auto min-w-[300px] max-w-sm w-full bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 p-4 flex items-start transform transition-all duration-300 animate-slide-up
+                            pointer-events-auto 
+                            w-auto max-w-[85vw] sm:max-w-sm 
+                            bg-white dark:bg-slate-800 
+                            rounded-xl shadow-lg shadow-slate-200/50 dark:shadow-black/20
+                            border border-slate-100 dark:border-slate-700 
+                            p-3 sm:px-4 sm:py-3 
+                            flex items-start gap-3
+                            transform transition-all duration-300
+                            ${toast.isExiting ? 'animate-toast-out' : 'animate-toast-in'}
                         `}
                     >
-                        <div className={`flex-shrink-0 mt-0.5 mr-3 ${getIconColor(toast.type)}`}>
+                        <div className={`flex-shrink-0 mt-0.5 ${getIconColor(toast.type)}`}>
                             <i className={`fas ${getIconClass(toast.type)}`}></i>
                         </div>
-                        <div className="flex-1 text-sm font-medium text-slate-800 dark:text-slate-200">
+                        <div className="flex-1 text-sm font-medium text-slate-800 dark:text-slate-200 break-words leading-tight">
                             {toast.message}
                         </div>
-                        <button onClick={() => removeToast(toast.id)} className="ml-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                        <button onClick={() => removeToast(toast.id)} className="flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors -mr-1">
                             <i className="fas fa-times"></i>
                         </button>
                     </div>

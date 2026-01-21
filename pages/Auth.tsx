@@ -129,7 +129,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     icon="fa-user" 
                     value={formData.username}
                     onChange={e => setFormData({...formData, username: e.target.value})}
-                    placeholder="johndoe"
+                    placeholder="zhaojiuya"
                     required
                 />
                 <Input 

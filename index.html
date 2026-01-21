@@ -34,6 +34,8 @@
               'slide-up': 'slideUp 0.3s ease-out',
               'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'wave': 'wave 1.2s infinite ease-in-out',
+              'toast-in': 'toastIn 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards',
+              'toast-out': 'toastOut 0.25s ease-in forwards',
             },
             keyframes: {
               fadeIn: {
@@ -47,6 +49,14 @@
               wave: {
                 '0%, 100%': { transform: 'scaleY(0.5)', opacity: '0.5' },
                 '50%': { transform: 'scaleY(1)', opacity: '1' },
+              },
+              toastIn: {
+                '0%': { opacity: '0', transform: 'translateY(-1rem) scale(0.95)' },
+                '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+              },
+              toastOut: {
+                '0%': { opacity: '1', transform: 'scale(1)' },
+                '100%': { opacity: '0', transform: 'translateY(-0.5rem) scale(0.95)' },
               }
             }
           },
