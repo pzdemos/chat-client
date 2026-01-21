@@ -44,7 +44,6 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Initial Setup ---
   useEffect(() => {
@@ -62,10 +61,10 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                 if (prev.some(m => m._id === msg._id)) return prev;
 
                 if (msg.fromUserId === user.userId) {
-                    const optimisticIndex = prev.findIndex(m =>
-                        m.content === msg.content &&
+                    const optimisticIndex = prev.findIndex(m => 
+                        m.content === msg.content && 
                         m.messageType === msg.messageType &&
-                        (m._id?.length || 0) < 20
+                        (m._id?.length || 0) < 20 
                     );
 
                     if (optimisticIndex !== -1) {
@@ -81,14 +80,12 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                 }
                 return [...prev, msg];
             });
-
-            // Clear typing status when receiving a message from the other user
+            
             if (msg.fromUserId === activeChat.userId) {
-                setIsTyping(false);
                 newSocket.emit('markAsRead', { userId: user.userId, friendUserId: activeChat.userId });
             }
         }
-        refreshFriends();
+        refreshFriends(); 
     };
 
     const handleMessageSent = (data: Message) => {
@@ -198,65 +195,6 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       }, 50);
   };
 
-  // iOS keyboard handling
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-
-  useEffect(() => {
-    // Detect iOS keyboard visibility
-    const handleResize = () => {
-      // Check if visual viewport is smaller than window (keyboard is open)
-      if (window.visualViewport) {
-        const isKeyboardOpen = window.visualViewport.height < window.innerHeight * 0.8;
-        setIsKeyboardVisible(isKeyboardOpen);
-        
-        if (isKeyboardOpen && activeChat) {
-          // Scroll to bottom when keyboard opens
-          setTimeout(() => scrollToBottom(true), 100);
-        }
-      }
-    };
-
-    // Handle focus/blur for better compatibility
-    const handleFocus = () => {
-      setIsKeyboardVisible(true);
-      setTimeout(() => scrollToBottom(true), 300);
-    };
-
-    const handleBlur = () => {
-      // Small delay to ensure blur is not from switching between inputs
-      setTimeout(() => setIsKeyboardVisible(false), 100);
-    };
-
-    // Add event listeners
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
-    }
-
-    // Add focus/blur listeners to all inputs and textareas
-    const inputs = document.querySelectorAll('input, textarea');
-    inputs.forEach(input => {
-      input.addEventListener('focus', handleFocus);
-      input.addEventListener('blur', handleBlur);
-    });
-
-    return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleResize);
-      }
-      
-      const inputs = document.querySelectorAll('input, textarea');
-      inputs.forEach(input => {
-        input.removeEventListener('focus', handleFocus);
-        input.removeEventListener('blur', handleBlur);
-      });
-    };
-  }, [activeChat]);
-
-  const handleInputFocus = () => {
-    setIsKeyboardVisible(true);
-    setTimeout(() => scrollToBottom(true), 300);
-  };
-
   useEffect(() => {
       if (messages.length > 0) {
           scrollToBottom();
@@ -308,8 +246,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       setActiveChat(friend);
       setMessages([]);
       setIsLoading(true);
-      setIsTyping(false);  // Reset typing status when switching chat
-
+      
       setFriends(prev => prev.map(f => f.userId === friend.userId ? { ...f, unreadCount: 0 } : f));
 
       try {
@@ -326,7 +263,6 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
 
   const handleBackToFriends = () => {
       setActiveChat(null);
-      setIsTyping(false);  // Reset typing status when going back to friends list
       // Clear URL parameter safely
       try {
         const url = new URL(window.location.href);
@@ -337,34 +273,9 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       }
   };
 
-  const handleInputChange = (value: string) => {
-      setInputText(value);
-
-      if (!socket || !activeChat) return;
-
-      // Send typing event
-      socket.emit('typing', { fromUserId: user.userId, toUserId: activeChat.userId });
-
-      // Clear previous timeout
-      if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-      }
-
-      // Set new timeout to send stopTyping after 1 second of no input
-      typingTimeoutRef.current = setTimeout(() => {
-          socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
-      }, 1000);
-  };
-
   const sendMessage = () => {
       if (!inputText.trim() || !activeChat || !socket) return;
-
-      // Clear typing timeout when sending message
-      if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = null;
-      }
-
+      
       const timestamp = new Date().toISOString();
       const tempId = Math.random().toString(36).substr(2, 9);
 
@@ -379,11 +290,11 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       };
 
       socket.emit('sendMessage', msgData);
-
+      
       setMessages(prev => [...prev, msgData as Message]);
       setInputText('');
       socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
-      refreshFriends();
+      refreshFriends(); 
       scrollToBottom(true);
   };
 
@@ -588,19 +499,13 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
   // --- Render ---
 
   return (
-    // Use fixed positioning with dynamic padding for iOS keyboard
-    <div 
-      className="fixed inset-0 flex bg-white dark:bg-slate-900 overflow-hidden font-sans"
-      style={{
-        paddingBottom: isKeyboardVisible ? 'env(safe-area-inset-bottom, 20px)' : '0px',
-        transition: 'padding-bottom 0.2s ease'
-      }}
-    >
+    // Changed: Use h-[100dvh] instead of fixed inset-0 to support mobile keyboards correctly
+    <div className="h-[100dvh] w-full flex bg-white dark:bg-slate-900 overflow-hidden font-sans relative">
         
         {/* LEFT SIDEBAR */}
         <div className={`
-            flex-shrink-0 w-full md:w-[320px] lg:w-[360px] bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-all duration-300 relative z-20
-            ${activeChat ? '-translate-x-full md:translate-x-0 md:flex hidden' : 'translate-x-0'}
+            flex-shrink-0 w-full md:w-[320px] lg:w-[360px] bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-all duration-300 absolute md:relative z-20 h-full
+            ${activeChat ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
         `}>
             {/* Sidebar Header */}
             <div className="p-4 bg-white dark:bg-slate-900 shadow-sm z-10 flex-shrink-0">
@@ -713,8 +618,8 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
 
         {/* MAIN CHAT AREA */}
         <div className={`
-            flex-1 flex flex-col bg-white dark:bg-slate-900 transition-transform duration-300 relative
-            ${!activeChat ? 'translate-x-full md:translate-x-0 md:flex hidden' : 'translate-x-0'}
+            absolute inset-0 z-30 md:static md:flex-1 flex flex-col bg-white dark:bg-slate-900 transition-transform duration-300
+            ${!activeChat ? 'translate-x-full md:translate-x-0' : 'translate-x-0'}
         `}>
             {!activeChat ? (
                 <div className="hidden md:flex flex-col items-center justify-center h-full bg-slate-50/50 dark:bg-slate-900 text-slate-400">
@@ -762,7 +667,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Input Area: Fixed at bottom with safe area support */}
+                    {/* Input Area: flex-none ensures it stays at bottom, pb-safe handles iPhone Home bar */}
                     <div className="flex-none p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 z-40 pb-safe">
                         <div className="flex items-end space-x-2 max-w-4xl mx-auto">
                              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
@@ -778,8 +683,11 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                                 <textarea
                                     rows={1}
                                     value={inputText}
-                                    onChange={e => handleInputChange(e.target.value)}
-                                    onFocus={handleInputFocus}
+                                    onChange={e => {
+                                        setInputText(e.target.value);
+                                        socket?.emit('typing', { fromUserId: user.userId, toUserId: activeChat.userId });
+                                    }}
+                                    onFocus={() => setTimeout(() => scrollToBottom(true), 100)}
                                     onKeyDown={e => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
                                             e.preventDefault();

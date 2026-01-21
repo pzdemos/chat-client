@@ -142,15 +142,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
 
   const startRecording = async () => {
     try {
-      // Improve Android audio quality: request echo cancellation and noise suppression
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { 
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              channelCount: 1
-          } 
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -166,21 +158,14 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
       audioInputRef.current = source;
       source.connect(analyser);
 
-      // THROTTLED UI UPDATES:
-      // Reducing UI update frequency from ~60fps to ~10fps to prevent 
-      // main thread blocking which causes audio dropouts (stuttering) on Android.
-      let lastUpdateTime = 0;
-      const updateLevel = (timestamp: number) => {
-          if (timestamp - lastUpdateTime > 100) { // 100ms throttle
-             const dataArray = new Uint8Array(analyser.frequencyBinCount);
-             analyser.getByteFrequencyData(dataArray);
-             const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-             setAudioLevel(avg);
-             lastUpdateTime = timestamp;
-          }
+      const updateLevel = () => {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+          const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          setAudioLevel(avg);
           animationFrameRef.current = requestAnimationFrame(updateLevel);
       };
-      animationFrameRef.current = requestAnimationFrame(updateLevel);
+      updateLevel();
 
       // 2. Setup Recorder (ScriptProcessor)
       // bufferSize 4096 gives a good balance between latency and performance
@@ -200,8 +185,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onClose })
       };
 
       // Connect source -> processor -> destination (needed for process to run)
-      // Note: We are NOT connecting processor output to destination to avoid feedback loop if not needed
-      // But we MUST connect it to destination for onaudioprocess to fire in standard implementations
       source.connect(processor);
       processor.connect(audioCtx.destination);
 
