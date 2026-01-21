@@ -86,17 +86,33 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-8 sm:p-10 rounded-3xl shadow-2xl w-full max-w-md relative z-10 animate-slide-up border border-white/20 dark:border-slate-800">
             {/* Header / Logo Animation */}
             <div className="text-center mb-8">
-                <div className="relative w-24 h-24 mx-auto mb-4">
-                    {/* Main Bubble */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary-400 to-primary-600 rounded-[28px] shadow-xl shadow-primary-500/30 flex items-center justify-center transform transition-transform hover:scale-105 duration-300" style={{ animation: 'float 6s ease-in-out infinite' }}>
-                        <i className="fas fa-comment-alt text-4xl text-white opacity-90"></i>
+                {/* Premium Logo Design */}
+                <div className="relative w-28 h-28 mx-auto mb-8 group cursor-default">
+                    {/* Ambient Glow */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-primary-500/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                    
+                    {/* Main Card */}
+                    <div className="relative w-full h-full bg-gradient-to-tr from-primary-600 via-primary-500 to-emerald-400 rounded-[2rem] shadow-2xl shadow-primary-500/20 flex items-center justify-center transform transition-all duration-500 hover:scale-105 hover:rotate-2 border border-white/10 overflow-hidden">
+                        
+                        {/* Shine/Gloss Effects */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/25 via-transparent to-black/5 pointer-events-none"></div>
+                        <div className="absolute -right-8 -top-8 w-24 h-24 bg-white/20 rounded-full blur-2xl pointer-events-none"></div>
+                        
+                        {/* Icon */}
+                        <div className="relative z-10 drop-shadow-xl transform transition-transform duration-500 group-hover:-translate-y-1 group-hover:scale-110">
+                             <i className="fas fa-comment-dots text-[3.5rem] text-white"></i>
+                        </div>
                     </div>
-                    {/* Secondary Bouncing Bubble */}
-                    <div className="absolute -top-3 -right-3 w-10 h-10 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center shadow-lg animate-bounce" style={{ animationDuration: '2s' }}>
-                        <i className="fas fa-heart text-red-500 text-sm"></i>
+
+                    {/* Floating Badge */}
+                    <div className="absolute -top-2 -right-2">
+                         <div className="relative flex items-center justify-center w-10 h-10">
+                             <span className="absolute inline-flex h-full w-full rounded-full bg-rose-500/30 animate-ping duration-1000"></span>
+                             <div className="relative w-9 h-9 bg-white dark:bg-slate-800 rounded-full shadow-lg flex items-center justify-center ring-4 ring-slate-50 dark:ring-slate-900">
+                                 <i className="fas fa-heart text-rose-500 text-xs animate-pulse"></i>
+                             </div>
+                         </div>
                     </div>
-                    {/* Glow Effect */}
-                    <div className="absolute inset-0 bg-primary-400 blur-2xl opacity-20 -z-10 animate-pulse"></div>
                 </div>
                 
                 <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
@@ -154,15 +170,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 </p>
             </div>
         </div>
-        
-        {/* Inline style for float animation since we can't easily edit index.html for custom keyframes right now without adding global css */}
-        <style dangerouslySetInnerHTML={{__html: `
-            @keyframes float {
-                0% { transform: translateY(0px); }
-                50% { transform: translateY(-10px); }
-                100% { transform: translateY(0px); }
-            }
-        `}} />
     </div>
   );
 };

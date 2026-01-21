@@ -38,12 +38,52 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   
+  // Dynamic Viewport Height for iOS Keyboard
+  const [viewportHeight, setViewportHeight] = useState('100dvh');
+  
   // Voice Recording (New Overlay State)
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Typing Logic Refs
+  const senderTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 发送端：用于检测停止输入
+  const receiverTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 接收端：用于防止状态卡死
+
+  // --- iOS Viewport Fix ---
+  useEffect(() => {
+    const handleVisualViewportResize = () => {
+      if (window.visualViewport) {
+        // 直接使用 visualViewport 的高度，这在键盘弹出时会自动减去键盘高度
+        setViewportHeight(`${window.visualViewport.height}px`);
+        
+        // 关键修复：强制将页面滚动回顶部，防止 iOS 键盘把整个 body 往上推导致 header 消失
+        window.scrollTo(0, 0);
+      } else {
+        // Fallback for browsers without visualViewport API (rare nowadays)
+        setViewportHeight(`${window.innerHeight}px`);
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleVisualViewportResize);
+      window.visualViewport.addEventListener('scroll', handleVisualViewportResize); // 有时 iOS 会触发 scroll 而不是 resize
+    }
+    window.addEventListener('resize', handleVisualViewportResize);
+
+    // Initial calculation
+    handleVisualViewportResize();
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleVisualViewportResize);
+        window.visualViewport.removeEventListener('scroll', handleVisualViewportResize);
+      }
+      window.removeEventListener('resize', handleVisualViewportResize);
+    };
+  }, []);
 
   // --- Initial Setup ---
   useEffect(() => {
@@ -57,6 +97,10 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
 
     const handleReceiveMessage = (msg: Message) => {
         if (activeChat && (msg.fromUserId === activeChat.userId || msg.toUserId === activeChat.userId)) {
+            // 收到消息时，立即停止显示正在输入
+            setIsTyping(false);
+            if (receiverTypingTimeoutRef.current) clearTimeout(receiverTypingTimeoutRef.current);
+
             setMessages(prev => {
                 if (prev.some(m => m._id === msg._id)) return prev;
 
@@ -146,11 +190,25 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
     newSocket.on('newFriendRequest', handleNewRequest);
     newSocket.on('friendRequestAccepted', handleRequestAccepted);
     
+    // --- Typing Logic (Receiver Side) ---
     newSocket.on('userTyping', ({ fromUserId }) => {
-        if (activeChat?.userId === fromUserId) setIsTyping(true);
+        if (activeChat?.userId === fromUserId) {
+            setIsTyping(true);
+            
+            // 安全机制：清除旧的接收端定时器，设置新的定时器
+            // 如果 5 秒内没有收到新的 typing 事件或 stopTyping 事件，自动隐藏
+            if (receiverTypingTimeoutRef.current) clearTimeout(receiverTypingTimeoutRef.current);
+            receiverTypingTimeoutRef.current = setTimeout(() => {
+                setIsTyping(false);
+            }, 5000);
+        }
     });
+
     newSocket.on('userStopTyping', ({ fromUserId }) => {
-        if (activeChat?.userId === fromUserId) setIsTyping(false);
+        if (activeChat?.userId === fromUserId) {
+            setIsTyping(false);
+            if (receiverTypingTimeoutRef.current) clearTimeout(receiverTypingTimeoutRef.current);
+        }
     });
 
     if (newSocket.connected) handleConnect();
@@ -235,13 +293,21 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
         try {
             const url = new URL(window.location.href);
             url.searchParams.set('chatId', friend.userId);
-            // Use query string only to avoid origin issues in restricted environments (blob/iframe)
             window.history.pushState({}, '', '?' + url.searchParams.toString());
         } catch (e) {
-            // Silently fail if history API is restricted (e.g. preview env)
             console.warn('URL update restricted in this environment');
         }
       }
+
+      // 切换聊天时，重置所有输入状态
+      if (senderTypingTimeoutRef.current) clearTimeout(senderTypingTimeoutRef.current);
+      if (receiverTypingTimeoutRef.current) clearTimeout(receiverTypingTimeoutRef.current);
+      if (socket && activeChat) {
+          // 切换前通知旧的聊天对象停止输入
+          socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
+      }
+      setIsTyping(false);
+      setInputText('');
 
       setActiveChat(friend);
       setMessages([]);
@@ -273,9 +339,37 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const text = e.target.value;
+      setInputText(text);
+
+      if (!activeChat || !socket) return;
+
+      // 只有当有内容时才发送 typing
+      if (text.length > 0) {
+          socket.emit('typing', { fromUserId: user.userId, toUserId: activeChat.userId });
+          
+          // 清除之前的停止计时器
+          if (senderTypingTimeoutRef.current) clearTimeout(senderTypingTimeoutRef.current);
+
+          // 设置新的停止计时器 (2秒后如果不继续输入，则发送停止)
+          senderTypingTimeoutRef.current = setTimeout(() => {
+              socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
+          }, 2000);
+      } else {
+          // 内容为空，立即停止
+          if (senderTypingTimeoutRef.current) clearTimeout(senderTypingTimeoutRef.current);
+          socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
+      }
+  };
+
   const sendMessage = () => {
       if (!inputText.trim() || !activeChat || !socket) return;
       
+      // 发送消息时立即停止 typing 状态
+      if (senderTypingTimeoutRef.current) clearTimeout(senderTypingTimeoutRef.current);
+      socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
+
       const timestamp = new Date().toISOString();
       const tempId = Math.random().toString(36).substr(2, 9);
 
@@ -293,7 +387,6 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       
       setMessages(prev => [...prev, msgData as Message]);
       setInputText('');
-      socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
       refreshFriends(); 
       scrollToBottom(true);
   };
@@ -499,8 +592,11 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
   // --- Render ---
 
   return (
-    // Changed: Use h-[100dvh] instead of fixed inset-0 to support mobile keyboards correctly
-    <div className="h-[100dvh] w-full flex bg-white dark:bg-slate-900 overflow-hidden font-sans relative">
+    // Changed: Use dynamic viewportHeight and removed h-[100dvh] class to fix iOS keyboard layout
+    <div 
+        style={{ height: viewportHeight }}
+        className="w-full flex bg-white dark:bg-slate-900 overflow-hidden font-sans relative"
+    >
         
         {/* LEFT SIDEBAR */}
         <div className={`
@@ -683,10 +779,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                                 <textarea
                                     rows={1}
                                     value={inputText}
-                                    onChange={e => {
-                                        setInputText(e.target.value);
-                                        socket?.emit('typing', { fromUserId: user.userId, toUserId: activeChat.userId });
-                                    }}
+                                    onChange={handleInputChange}
                                     onFocus={() => setTimeout(() => scrollToBottom(true), 100)}
                                     onKeyDown={e => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
