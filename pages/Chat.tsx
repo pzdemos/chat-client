@@ -44,6 +44,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Initial Setup ---
   useEffect(() => {
@@ -61,10 +62,10 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                 if (prev.some(m => m._id === msg._id)) return prev;
 
                 if (msg.fromUserId === user.userId) {
-                    const optimisticIndex = prev.findIndex(m => 
-                        m.content === msg.content && 
+                    const optimisticIndex = prev.findIndex(m =>
+                        m.content === msg.content &&
                         m.messageType === msg.messageType &&
-                        (m._id?.length || 0) < 20 
+                        (m._id?.length || 0) < 20
                     );
 
                     if (optimisticIndex !== -1) {
@@ -80,12 +81,14 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                 }
                 return [...prev, msg];
             });
-            
+
+            // Clear typing status when receiving a message from the other user
             if (msg.fromUserId === activeChat.userId) {
+                setIsTyping(false);
                 newSocket.emit('markAsRead', { userId: user.userId, friendUserId: activeChat.userId });
             }
         }
-        refreshFriends(); 
+        refreshFriends();
     };
 
     const handleMessageSent = (data: Message) => {
@@ -246,7 +249,8 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       setActiveChat(friend);
       setMessages([]);
       setIsLoading(true);
-      
+      setIsTyping(false);  // Reset typing status when switching chat
+
       setFriends(prev => prev.map(f => f.userId === friend.userId ? { ...f, unreadCount: 0 } : f));
 
       try {
@@ -263,6 +267,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
 
   const handleBackToFriends = () => {
       setActiveChat(null);
+      setIsTyping(false);  // Reset typing status when going back to friends list
       // Clear URL parameter safely
       try {
         const url = new URL(window.location.href);
@@ -273,9 +278,34 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       }
   };
 
+  const handleInputChange = (value: string) => {
+      setInputText(value);
+
+      if (!socket || !activeChat) return;
+
+      // Send typing event
+      socket.emit('typing', { fromUserId: user.userId, toUserId: activeChat.userId });
+
+      // Clear previous timeout
+      if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Set new timeout to send stopTyping after 1 second of no input
+      typingTimeoutRef.current = setTimeout(() => {
+          socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
+      }, 1000);
+  };
+
   const sendMessage = () => {
       if (!inputText.trim() || !activeChat || !socket) return;
-      
+
+      // Clear typing timeout when sending message
+      if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+      }
+
       const timestamp = new Date().toISOString();
       const tempId = Math.random().toString(36).substr(2, 9);
 
@@ -290,11 +320,11 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       };
 
       socket.emit('sendMessage', msgData);
-      
+
       setMessages(prev => [...prev, msgData as Message]);
       setInputText('');
       socket.emit('stopTyping', { fromUserId: user.userId, toUserId: activeChat.userId });
-      refreshFriends(); 
+      refreshFriends();
       scrollToBottom(true);
   };
 
@@ -683,10 +713,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                                 <textarea
                                     rows={1}
                                     value={inputText}
-                                    onChange={e => {
-                                        setInputText(e.target.value);
-                                        socket?.emit('typing', { fromUserId: user.userId, toUserId: activeChat.userId });
-                                    }}
+                                    onChange={e => handleInputChange(e.target.value)}
                                     onFocus={() => setTimeout(() => scrollToBottom(true), 100)}
                                     onKeyDown={e => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
