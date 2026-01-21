@@ -33,7 +33,3 @@ pnpm-debug.log*
 
 # Optional: Ignore local dev certificates
 *.pem
-
-# Github Workflows
-.github/*
-.github/workflows/deploy.yml
