@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content, viewport-fit=cover" />
     <title>Chat Connect</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
@@ -76,6 +76,38 @@
       .no-scrollbar {
         -ms-overflow-style: none;
         scrollbar-width: none;
+      }
+      
+      /* iOS Safe Area Support */
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      .pt-safe {
+        padding-top: env(safe-area-inset-top, 0px);
+      }
+      .pl-safe {
+        padding-left: env(safe-area-inset-left, 0px);
+      }
+      .pr-safe {
+        padding-right: env(safe-area-inset-right, 0px);
+      }
+      
+      /* Prevent iOS text size adjustment */
+      html {
+        -webkit-text-size-adjust: 100%;
+        -webkit-tap-highlight-color: transparent;
+      }
+      
+      /* Improve iOS scrolling */
+      body {
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      /* Fix iOS input zoom */
+      @supports (-webkit-touch-callout: none) {
+        input, textarea {
+          font-size: 16px !important;
+        }
       }
     </style>
 <script type="importmap">
