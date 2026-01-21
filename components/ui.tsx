@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -51,7 +51,11 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
-export const Input: React.FC<InputProps> = ({ label, icon, error, className = '', ...props }) => {
+export const Input: React.FC<InputProps> = ({ label, icon, error, className = '', type, ...props }) => {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === 'password';
+  const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
+
   return (
     <div className="w-full">
       {label && <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5 ml-1">{label}</label>}
@@ -62,13 +66,24 @@ export const Input: React.FC<InputProps> = ({ label, icon, error, className = ''
           </div>
         )}
         <input
-          className={`w-full bg-white dark:bg-slate-800 border-2 rounded-xl py-2.5 ${icon ? 'pl-10' : 'pl-4'} pr-4 text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all duration-200 ${
+          type={inputType}
+          className={`w-full bg-white dark:bg-slate-800 border-2 rounded-xl py-2.5 ${icon ? 'pl-10' : 'pl-4'} ${isPassword ? 'pr-10' : 'pr-4'} text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all duration-200 ${
             error 
             ? 'border-red-500 focus:border-red-500 focus:ring-4 focus:ring-red-500/10' 
             : 'border-slate-200 dark:border-slate-700 focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10'
           } ${className}`}
           {...props}
         />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-primary-500 transition-colors focus:outline-none"
+            tabIndex={-1}
+          >
+            <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+          </button>
+        )}
       </div>
       {error && <p className="mt-1.5 ml-1 text-xs font-medium text-red-500 animate-fade-in">{error}</p>}
     </div>
