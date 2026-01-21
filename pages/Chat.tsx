@@ -13,9 +13,10 @@ import { VoiceRecorder } from '../components/VoiceRecorder';
 interface ChatProps {
   user: User;
   onLogout: () => void;
+  onUpdateUser: (user: User) => void;
 }
 
-const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
+const Chat: React.FC<ChatProps> = ({ user, onLogout, onUpdateUser }) => {
   const { showToast } = useToast();
   const { theme, toggleTheme } = useTheme();
   const { t, language, setLanguage } = useLanguage();
@@ -47,6 +48,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   
   // Typing Logic Refs
   const senderTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 发送端：用于检测停止输入
@@ -221,7 +223,7 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
         newSocket.off('recallError', handleRecallError);
         newSocket.off('messageDeleted', handleMessageDeleted);
         newSocket.off('messagesRead', handleMessagesRead);
-        newSocket.off('newFriendRequest', handleNewRequest);
+        newSocket.on('newFriendRequest', handleNewRequest);
         newSocket.off('friendRequestAccepted', handleRequestAccepted);
         newSocket.off('userTyping');
         newSocket.off('userStopTyping');
@@ -464,6 +466,35 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
       } catch (error) {
           showToast('Image upload failed', 'error');
       }
+  };
+  
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    try {
+        const { data } = await apiClient.put(`users/${user.userId}/avatar`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        
+        let newAvatarUrl = user.avatar;
+        if (data && typeof data === 'object') {
+             if (data.avatar) newAvatarUrl = data.avatar;
+             else if (data.url) newAvatarUrl = data.url;
+             else if (data.userId && data.username) newAvatarUrl = data.avatar; 
+        } else if (typeof data === 'string') {
+            newAvatarUrl = data;
+        }
+
+        const newUser = { ...user, avatar: newAvatarUrl };
+        onUpdateUser(newUser);
+        showToast(t('modal.avatarUpdated'), 'success');
+    } catch (error: any) {
+        showToast(error.message || 'Failed to update avatar', 'error');
+    }
   };
 
   // --- Voice Logic (New Overlay) ---
@@ -764,13 +795,13 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                     </div>
 
                     {/* Input Area: flex-none ensures it stays at bottom, pb-safe handles iPhone Home bar */}
-                    <div className="flex-none p-3 sm:p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 z-40 pb-safe">
+                    <div className="flex-none py-2 px-3 sm:py-3 sm:px-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 z-40 pb-safe">
                         <div className="flex items-end space-x-2 max-w-4xl mx-auto">
                              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                              
                              <button 
                                 onClick={() => fileInputRef.current?.click()} 
-                                className="mb-1 w-10 h-10 rounded-full text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 transition flex items-center justify-center flex-shrink-0"
+                                className="mb-0.5 w-9 h-9 rounded-full text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-800 transition flex items-center justify-center flex-shrink-0"
                             >
                                 <i className="fas fa-image text-lg"></i>
                              </button>
@@ -788,11 +819,11 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                                         }
                                     }}
                                     placeholder={t('chat.typeMessage')}
-                                    className="flex-1 bg-transparent border-none focus:ring-0 outline-none text-slate-800 dark:text-white placeholder-slate-400 resize-none py-3 px-2 max-h-32 text-sm"
+                                    className="flex-1 bg-transparent border-none focus:ring-0 outline-none text-slate-800 dark:text-white placeholder-slate-400 resize-none py-2 px-2 max-h-32 text-sm"
                                 />
                                 <button 
                                     onClick={openVoiceRecorder}
-                                    className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-primary-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex-shrink-0 mr-1"
+                                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-primary-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex-shrink-0 mr-1"
                                     title="Record Voice"
                                 >
                                     <i className="fas fa-microphone"></i>
@@ -802,9 +833,9 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
                              <Button 
                                 onClick={sendMessage} 
                                 disabled={!inputText.trim()} 
-                                className="mb-1 !w-10 !h-10 !p-0 !rounded-full flex-shrink-0"
+                                className="mb-0.5 !w-9 !h-9 !p-0 !rounded-full flex-shrink-0"
                              >
-                                <i className="fas fa-paper-plane text-sm ml-[-2px] mt-[2px]"></i>
+                                <i className="fas fa-paper-plane text-xs ml-[-2px] mt-[2px]"></i>
                              </Button>
                         </div>
                     </div>
@@ -890,8 +921,9 @@ const Chat: React.FC<ChatProps> = ({ user, onLogout }) => {
         <Modal isOpen={showProfile} onClose={() => setShowProfile(false)} title={t('modal.myProfile')}>
              <div className="flex flex-col items-center pt-4 pb-6">
                  <div className="relative group mb-4">
+                     <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
                      <Avatar name={user.username} src={normalizeImageUrl(user.avatar)} size="xl" className="" />
-                     <button className="absolute bottom-0 right-0 bg-primary-500 text-white rounded-full w-8 h-8 flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900">
+                     <button onClick={() => avatarInputRef.current?.click()} className="absolute bottom-0 right-0 bg-primary-500 text-white rounded-full w-8 h-8 flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 hover:bg-primary-600 transition-colors">
                         <i className="fas fa-camera text-xs"></i>
                      </button>
                  </div>

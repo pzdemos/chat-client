@@ -59,6 +59,7 @@ const translations = {
     'modal.language': 'Language',
     'modal.userId': 'User ID',
     'modal.logout': 'Log Out',
+    'modal.avatarUpdated': 'Avatar updated successfully',
     
     // Actions
     'action.add': 'Add',
@@ -122,6 +123,7 @@ const translations = {
     'modal.language': '语言设置',
     'modal.userId': '用户 ID',
     'modal.logout': '退出登录',
+    'modal.avatarUpdated': '头像更新成功',
     
     // Actions
     'action.add': '添加',

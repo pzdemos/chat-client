@@ -27,6 +27,11 @@ const App: React.FC = () => {
     setUser(userData);
   };
 
+  const handleUpdateUser = (userData: User) => {
+    setUser(userData);
+    localStorage.setItem('chatUser', JSON.stringify(userData));
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('chatUser');
     setUser(null);
@@ -45,7 +50,7 @@ const App: React.FC = () => {
         <ThemeProvider>
           <ToastProvider>
               {user ? (
-                  <Chat user={user} onLogout={handleLogout} />
+                  <Chat user={user} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />
               ) : (
                   <Auth onLogin={handleLogin} />
               )}
